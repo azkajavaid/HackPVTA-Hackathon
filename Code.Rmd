@@ -1,0 +1,138 @@
+
+##Example code for analysis performed on November 
+```{r}
+November2015 <- read.csv("November2015.csv")
+#Adding column names to the data
+colnames(November2015)<-c("Vehicle_ID","Time", "Latitude","Longitude", "Speed", "Direction", "OffRouteStatus", "CommStatus", "OperationalStatus", "Server_Time", "Route","Trip", "Inbound_Outbound", "Deviation", "Onboard", "Vehicle_Name", "Run_Id", "Run_Name", "Stop_Name", "Operator_Record_Id", "Route_Name", "Stop_Report", "Scheduled_Headway", "Target_Headway", "Alarm_State", "GPSStatus", "Boards", "Alights", "Confidence_Level", "Message_Type_Id", "Stop_Dwell_Time", "PTV_Health_Alert", "Stop_Id", "StationaryStatus", "StationaryDuration", "VehicleStatusID", "Veh_Type_Id", "Block_Farebox_Id", "OdometerValue", "MDTFlags")
+```
+
+##Creating rush hours as well as weekend/weekday identifier variables
+```{r}
+#Breaking up the time variable and adding it to the subset
+November2015$year<-as.numeric(substring(November2015$Time,1,4))
+November2015$month<-as.numeric(substring(November2015$Time,6,7))
+November2015$day<-as.numeric(substring(November2015$Time,9,10))
+November2015$hour<-as.numeric(substring(November2015$Time,12,13))
+November2015$minutes<-as.numeric(substring(November2015$Time,15,16))
+seconds<-substring(November2015$Time,18,23)
+seconds<-as.numeric(gsub("\\.", "", seconds))
+seconds<-signif(seconds,digits=2)
+November2015$seconds<-as.numeric(substring(seconds,1,(nchar(seconds))-3))
+
+November2015$dayofweek<-weekdays(as.Date(November2015$Time))
+November2015$dayofweek<-as.factor(November2015$dayofweek)
+
+November2015$weekcat[November2015$dayofweek == "Friday"] <- "weekend"
+November2015$weekcat[November2015$dayofweek == "Saturday"] <- "weekend"
+November2015$weekcat[November2015$dayofweek == "Sunday"] <- "weekend"
+November2015$weekcat[November2015$dayofweek == "Thursday"] <- "weekday"
+November2015$weekcat[November2015$dayofweek == "Wednesday"] <- "weekday"
+November2015$weekcat[November2015$dayofweek == "Tuesday"] <- "weekday"
+November2015$weekcat[November2015$dayofweek == "Monday"] <- "weekday"
+
+#In the dataset November2015, make the changes to add rush hours
+November2015$rush[November2015$hour == 16|November2015$hour == 17|November2015$hour == 18] <- "AfternoonRush"
+November2015$rush[November2015$hour == 7|November2015$hour == 8|November2015$hour == 9] <- "MorningRush"
+November2015$rush[November2015$hour == 10|November2015$hour == 11|November2015$hour == 12] <- "AfternoonNonRush"
+November2015$rush[November2015$hour == 20|November2015$hour == 21|November2015$hour == 22] <- "EveningNonRush"
+
+LateNovember33 <- subset(November2015, OperationalStatus == 1 & Route_Name == 33) #subset all late 31 buses
+LateNovember33$weekcat<-as.factor(LateNovember33$weekcat)
+
+#How much so rush hours deviate by from non rush hours in weekday vs weekend?
+mean(~Deviation, data=NovemberAfternoon) #deviation for afternoon rush hours (1.955)
+mean(~Deviation, data=NovemberMorning) #deviation for morning rush hours (1.244)
+mean(~Deviation, data=NovemberNonRush1) #deviation is 1.515328
+mean(~Deviation, data=NovemberNonRush2) #deviation is 1.578127
+
+LateNovemberDeviWeek <- subset(LateNovember, weekcat == "weekday")
+LateNovemberDeviWeekend <- subset(LateNovember, weekcat == "weekend")
+
+LateNovember33 %>%
+  group_by(weekcat, rush) %>%
+  summarise(mean(Deviation), sd(Deviation))
+
+LateNovember33 %>%
+  group_by(Route_Name) %>%
+  summarise(mean(Deviation), sd(Deviation))
+
+LateNovemberDeviWeekend %>%
+  group_by(Route_Name) %>%
+  summarise(mean(Deviation))
+
+SampleObs <- read.csv("SampleObs.csv")
+nrow(SampleObs)
+View(SampleObs)
+```
+
+##How does average speed, lateness change with different years
+```{r}
+#returns average speed of the data inputted
+speed<-function(data) {
+  speeddata<-data[5]
+  return (mean(speeddata)) #max speed for January2015 is 66
+}
+
+#returns number of late 
+Late<-function(data){
+  ((tally(~OperationalStatus)[1]+tally(~OperationalStatus)[2])/(tally(~OperationalStatus)[1]+tally(~OperationalStatus)[2]+tally(~OperationalStatus)[3]))
+}
+
+#returns percentage of ontime and early PVTA rides
+Ontime <- function(data){
+  return ((tally(~OperationalStatus)[1]+tally(~OperationalStatus)[2])/(tally(~OperationalStatus)[1]+tally(~OperationalStatus)[2]+tally(~OperationalStatus)[3]))*100
+}
+
+#returns bad communication (bad gps, inactive) inputting year
+Comm<-function(data){
+  return ((tally(~CommStatus)[1]+tally(~CommStatus)[2]+tally(~CommStatus)[4])/(tally(~CommStatus)[1]+tally(~CommStatus)[2]+tally(~CommStatus)[3]+tally(~CommStatus)[4]))*100
+}
+```
+
+##Stepwise regression in both forward and backward directions 
+```{r}
+full <- lm(Speed ~ Alights+Boards+Onboard+OperationalStatus+CommStatus+GPSStatus+OffRouteStatus)
+summary(full)
+step(full, direction = "both")
+```
+
+##Analyze Deviation in PVTA routes
+```{r}
+#Analyze route deviation by routes (group_by operator)
+November2015 %>%
+  group_by(Route_Name) %>%
+  summarise(DevRoute = mean(Deviation), numrow = n())
+
+November45$GPSStatus <- as.factor(November45$GPSStatus)
+November45<-subset(November2015, Route_Name == "45")
+mod1 <- lm(Deviation ~ Onboard + Speed + CommStatus+ Alights + Boards + GPSStatus + OperationalStatus)
+summary(mod1)
+```
+
+
+##Creating holiday status predictor
+```{r}
+LateNovember33$holiday<-ifelse(LateNovember33$day>24 &LateNovember33$day<31,"holiday","nonholiday")
+
+#Look at holidays for March since no run for November
+LateMarch33$holiday<-ifelse(LateMarch33$day>13 & LateMarch33$day<24,"holiday","nonholiday")
+tally(holiday~day, data=LateMarch33)
+```
+
+##Visualizing bus deviation from schedule by rush hours 
+```{r}
+
+p1<-bwplot(Deviation ~ rush  |  weekcat, data=LateFeb33, main="Late Feb33 Deviations", type=c("p","r"))
+p2<-bwplot(Deviation ~ rush  |  weekcat, data=LateOctober33, main="Late Oct33 Deviations", type=c("p","r"))
+
+print(p1, position = c(0, 0, 0.5, 1), more = TRUE)
+print(p2, position = c(0.5, 0, 1, 1))
+
+
+p1<-bwplot(Deviation ~ rush  |  weekcat, data=LateMarch33, main="Late March33 Deviations", type=c("p","r"))
+p2<-bwplot(Deviation ~ rush  |  weekcat, data=LateNovember33, main="Late Nov33 Deviations", type=c("p","r"))
+
+print(p1, position = c(0, 0, 0.5, 1), more = TRUE)
+print(p2, position = c(0.5, 0, 1, 1))
+```
+
