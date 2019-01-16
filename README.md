@@ -1,5 +1,3 @@
-# HackPVTA-Hackathon-
-
 This project was conducted at the HackPVTA, a Hackathon hosted by the University of Massachusetts Graduate Researchers interested in Data
 club (UMass Amherst GRiD). We were interested in exploring what factors can account for deviation in the PVTA bus schedule 
 (consequentially causing the bus to be late). We created weekday/weekend status, rush hours and holiday status predictors to assess if day
